@@ -70,20 +70,23 @@ class GPR(object):
             self.ops['K_ridge_op'] = K_ridge_op
 
             # Nodes for xy computation
+
             K = tf.placeholder(tf.float32, name='K')
             K_inv = tf.placeholder(tf.float32, name='K_inv')
             xy_ = tf.placeholder(tf.float32, name='xy_')
             yt_ = tf.placeholder(tf.float32, name='yt_')
-            k_inv_op = tf.matrix_inverse(K)
-            xy_op = tf.matmul(K_inv,yt_)
-
+            K_inv_op = tf.matrix_inverse(K)
+            #K_inv_op = tf.check_numerics(K_inv_op, "K_inv: ")
+            xy_op = tf.matmul(K_inv, yt_)
+            #xy_op = tf.check_numerics(xy_op, "xy_: ")
+            
             self.vars['K_h'] = K
             self.vars['K_inv_h'] = K_inv
             self.vars['xy_h'] = xy_
             self.vars['yt_h'] = yt_
             self.ops['K_inv_op'] = K_inv_op
             self.ops['xy_op'] = xy_op
-
+ 
             # Nodes for yhat / sigma computation
             K2 = tf.placeholder(tf.float32, name="K2")
             K3 = tf.placeholder(tf.float32, name="K3")
@@ -120,10 +123,10 @@ class GPR(object):
 
     def check_output(self, X):
         finite_els = np.isfinite(X)
-        if not np.all(finite_els)
+        if not np.all(finite_els):
             raise Exception("Input contains non-finite values: {}".format(X[~finite_els]))
 
-    def fit(self, X_train, y_train, ridge=1.0)
+    def fit(self, X_train, y_train, ridge=1.0):
         self._reset()
         X_train, y_tain = self.check_X_y(X_train, y_train)
         self.X_train = np.float32(X_train)
@@ -148,6 +151,7 @@ class GPR(object):
             self.K = sess.run(K_ridge_op, feed_dict={X_dists_ph:X_dists, ridge_ph:ridge})
 
             K_ph = self.vars['K_h']
+            K_inv_op = self.ops['K_inv_op']
             self.K_inv = sess.run(K_inv_op, feed_dict={K_ph:self.K})
 
             xy_op = self.ops['xy_op']
@@ -165,7 +169,7 @@ class GPR(object):
 
         arr_offset = 0;
         yhats = np.zeros([test_size, 1])
-        sigmas = np.zeros([test_sizem 1])
+        sigmas = np.zeros([test_size, 1])
 
         with tf.Session(graph=self.graph, config=tf.ConfigProto(intra_op_parallelism_threads=self.NUM_THREADS)) as sess:
             dist_op = self.ops['dist_op']
@@ -247,15 +251,25 @@ class GPR_GD(GPR):
     GP_BETA_UCB = "UCB"
     GP_BETA_CONST = "CONST"
 
-    def __init__(self, length_scale=DEFAULT_LENGTH_SCALE, magnitude=DEFAULT_MAGNITUDE, learning_rate=DEFAULT_LEARNING_RATE, epsilon=DEFAULT_EPSILON, max_iter=DEFAULT_MAX_ITER, sigma_multiplier=DEFAULT_SIGMA_MULTIPLIER, mu_multiplier = DEFAULT_MU_MULTIPLIER):super(GPR_GD,self).__init__(length_scale,magnitude)
+    def __init__(self, length_scale=DEFAULT_LENGTH_SCALE, 
+                 magnitude=DEFAULT_MAGNITUDE, 
+                 learning_rate=DEFAULT_LEARNING_RATE, 
+                 epsilon=DEFAULT_EPSILON, 
+                 max_iter=DEFAULT_MAX_ITER, 
+                 sigma_multiplier=DEFAULT_SIGMA_MULTIPLIER, 
+                 mu_multiplier = DEFAULT_MU_MULTIPLIER):
+        super(GPR_GD, self).__init__(length_scale, magnitude)
         self.learning_rate = learning_rate
         self.epsilon = epsilon
         self.max_iter = max_iter
         self.sigma_multiplier = sigma_multiplier
         self.mu_multiplier = mu_multiplier
 
-    def fit(self, X_train, y_train, ridge = DEFAULT_RIDGE):super(GPR_GD, self).fit(X_train,y_train,ridge)
-        with tf.Session(graph=self.graph, config=tf.ConfigProto(intra_op_parallelism_threads=self.NUM_THREADS)) as sess:
+    def fit(self, X_train, y_train, ridge = DEFAULT_RIDGE):
+        super(GPR_GD, self).fit(X_train,y_train,ridge)
+
+        with tf.Session(graph=self.graph, 
+                config=tf.ConfigProto(intra_op_parallelism_threads=self.NUM_THREADS)) as sess:
             xt_ = tf.Variable(self.X_train[0], tf.float32)
             xt_ph = tf.placeholder(tf.float32)
             xt_assign_op = xt_.assign(xt_ph)
@@ -268,7 +282,7 @@ class GPR_GD(GPR):
             sig_val = tf.cast((tf.sqrt(self.magnitude-tf.matmul(tf.transpose(K2__), tf.matmul(self.K_inv, K2__)) )), tf.float32)
 
             Loss = tf.squeeze(tf.subtract(self.mu_multiplier*yhat_gd,self.sigma_multiplier*sig_val))
-            optimizer = tf.train.AdagradDAOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
+            optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=self.epsilon)
             train = optimizer.minimize(Loss)
 
             self.vars['xt_'] = xt_
@@ -291,7 +305,7 @@ class GPR_GD(GPR):
         arr_offset = 0
         yhats = np.zeros([test_size, 1])
         sigmas = np.zeros([test_size, 1])
-        minLs = np.zeros([test_size,1])
+        minLs = np.zeros([test_size, 1])
         minL_confs = np.zeros([test_size,nfeats])
 
         with tf.Session(graph=self.graph, config=tf.ConfigProto(intra_op_parallelism_threads=self.NUM_THREADS)) as sess:
@@ -308,7 +322,7 @@ class GPR_GD(GPR):
                 init = tf.global_variables_initializer()
                 sess.run(init)
 
-                sig_val = self.vars['xt_']
+                sig_val = self.ops['sig_val2']
                 yhat_gd = self.ops['yhat_gd']
                 Loss = self.ops['loss_op']
                 train = self.ops['train_op']
@@ -341,7 +355,7 @@ class GPR_GD(GPR):
                         print "   loss:  {}".format(losses_it[step])
                         print "   conf:  {}".format(confs_it[step])
                         sess.run(train)
-                    if step = self.max_iter - 1:
+                    if step == self.max_iter - 1:
                         yhats_it[-1] = sess.run(yhat_gd)[0][0]
                         sigmas_it[-1] = sess.run(sig_val)[0][0]
                         losses_it[-1] = sess.run(Loss)
@@ -351,7 +365,7 @@ class GPR_GD(GPR):
                         assert np.all(np.isfinite(losses_it))
                         assert np.all(np.isfinite(confs_it))
 
-                    if np.all(~np.isfinite(losses_it))
+                    if np.all(~np.isfinite(losses_it)):
                         min_loss_idx = 0
                     else:
                         min_loss_idx = np.nanargmin(losses_it)
@@ -449,8 +463,8 @@ def gd_tf(xs, ys, xt, ridge, length_scale=1.0, magnitude=1.0, max_iter=50):
             sigmas[i] = sess.run(sig_val)[0][0]
             minL[i] = sess.run(Loss)
             new_conf[i] = sess.run(xt_)
-
-           return yhats, sigmas, minL, new_conf
+        
+        return yhats, sigmas, minL, new_conf
 
 
 def main():
@@ -469,7 +483,7 @@ def create_random_matrices(n_samples=3000, n_feats=12, n_test=444):
     return X_train, y_train, X_test, length_scale, magnitude, ridge
 
 def check_equivalence():
-    X_train, ytrain, X_test, length_scale, magnitude, ridge = create_random_matrices()
+    X_train, y_train, X_test, length_scale, magnitude, ridge = create_random_matrices()
 
     print "Running GPR method ..."
     start = time()
@@ -488,12 +502,12 @@ def check_equivalence():
     assert np.allclose(eips1,eips2)
 
 def check_gd_equivalence():
-    X_train, ytrain, X_test, length_scale, magnitude, ridge = create_random_matrices(n_test=2)
+    X_train, y_train, X_test, length_scale, magnitude, ridge = create_random_matrices(n_test=2)
  
     print "Running GPR_GD class ..."
     start = time()
     gpr_gd = GPR_GD(length_scale, magnitude, max_iter=5)
-    gpr_df.fit(X_train, y_train, ridge)
+    gpr_gd.fit(X_train, y_train, ridge)
     ypres2 = gpr_gd.predict(X_test)
     print "GPR_GD class: {0:.3f} seconds\n".format(time()-start)
 
@@ -501,22 +515,3 @@ def check_gd_equivalence():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
