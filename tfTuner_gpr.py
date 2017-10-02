@@ -511,6 +511,24 @@ def check_gd_equivalence():
     ypres2 = gpr_gd.predict(X_test)
     print "GPR_GD class: {0:.3f} seconds\n".format(time()-start)
 
+def read_matrices(n_feats, filepath):
+    train_file = open(filepath)
+    train_data = train_file.readlines() 
+    n_samples = len(train_data)  
+    X_train = np.array([s.strip().split(",")[0: (n_feats-1)] for s in train_data])
+    Y_train = np.array([s.strip().split(",")[(n_feats-1):] for s in train_data])
+    
+    length_scale = np.random.rand()
+    magnitude = np.random.rand()
+    ridge = np.ones(n_samples)*np.random.rand()
+    
+    return X_train, Y_train, length_scale, magnitude, ridge
+
+def explore_x_test(n_feats, test_size):
+    return n_feats, test_size
+
+def select_x_test(X_train):
+    return X_train
 
 
 if __name__ == "__main__":
