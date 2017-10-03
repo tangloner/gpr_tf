@@ -7,6 +7,7 @@ Created on Sep 19, 2017
 import sys
 import numpy as np
 import tensorflow as tf
+import lhsmdu
 from time import time
 
 class GPRResult(object):
@@ -524,11 +525,17 @@ def read_matrices(n_feats, filepath):
     
     return X_train, Y_train, length_scale, magnitude, ridge
 
-def explore_x_test(n_feats, test_size):
-    return n_feats, test_size
+def explore_x_test(n_feats, test_size, X_train):
+    return X_test
+
+def LHS_samples(n_feats, test_size):
+    lhs = lhsmu.sample(n_feats, test_size)
+    X_test = lhsmdu.createRandomStandardUniformMatrix(n_feats,test_size)
+    return X_test
 
 def select_x_test(X_train):
-    return X_train
+    X_test = X_train
+    return X_test
 
 
 if __name__ == "__main__":
